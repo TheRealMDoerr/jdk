@@ -874,7 +874,16 @@ void InterpreterMacroAssembler::remove_activation(TosState state,
   bind(slow_path);
   push(state);
   set_last_Java_frame(R1_SP, noreg);
+#if INCLUDE_JFR
+  ld(R11_scratch1, _abi0(callers_sp), R1_SP);
+  std(R14_bcp, _ijava_state_neg(bcp), R11_scratch1); // need to save bcp but not restore it.
+  std(R11_scratch1, in_bytes(JavaThread::last_sender_Java_fp_offset()), R16_thread);
+#endif
   call_VM_leaf(CAST_FROM_FN_PTR(address, InterpreterRuntime::at_unwind), R16_thread);
+#if INCLUDE_JFR
+  li(R0, 0);
+  std(R0, in_bytes(JavaThread::last_sender_Java_fp_offset()), R16_thread);
+#endif
   reset_last_Java_frame();
   pop(state);
   align(32);
