@@ -26,6 +26,8 @@
 #ifndef CPU_PPC_JAVAFRAMEANCHOR_PPC_HPP
 #define CPU_PPC_JAVAFRAMEANCHOR_PPC_HPP
 
+  JFR_ONLY(intptr_t* volatile _last_sender_Java_fp;) // specialized field for when JFR samples an interpreter frame
+
 public:
   // Each arch must define reset, save, restore
   // These are used by objects that only care about:
@@ -39,6 +41,7 @@ public:
     // fence?
     OrderAccess::release();
     _last_Java_pc = nullptr;
+    JFR_ONLY(_last_sender_Java_fp = nullptr;)
   }
 
   inline void set(intptr_t* sp, address pc) {
@@ -59,6 +62,7 @@ public:
       OrderAccess::release();
     }
     _last_Java_pc = src->_last_Java_pc;
+    JFR_ONLY(_last_sender_Java_fp = src->_last_sender_Java_fp;)
     // Must be last so profiler will always see valid frame if has_last_frame() is true.
     OrderAccess::release();
     _last_Java_sp = src->_last_Java_sp;
@@ -72,6 +76,11 @@ public:
   intptr_t* last_Java_sp(void) const  { return _last_Java_sp; }
 
   address last_Java_pc(void)          { return _last_Java_pc; }
+
+  intptr_t* last_Java_fp() const      { return *(intptr_t**)_last_Java_sp; }
+
+  JFR_ONLY(intptr_t* last_sender_Java_fp() const { return _last_sender_Java_fp;})
+  JFR_ONLY(static ByteSize last_sender_Java_fp_offset() { return byte_offset_of(JavaFrameAnchor, _last_sender_Java_fp); })
 
   void set_last_Java_sp(intptr_t* sp) { OrderAccess::release(); _last_Java_sp = sp; }
 

@@ -793,19 +793,26 @@ void InterpreterMacroAssembler::unlock_if_synchronized_method(TosState state,
 }
 
 // Support function for remove_activation & Co.
-void InterpreterMacroAssembler::merge_frames(Register Rsender_sp, Register return_pc,
-                                             Register Rscratch1, Register Rscratch2) {
-  // Pop interpreter frame.
-  ld(Rscratch1, 0, R1_SP); // *SP
-  ld(Rsender_sp, _ijava_state_neg(sender_sp), Rscratch1); // top_frame_sp
-  ld(Rscratch2, 0, Rscratch1); // **SP
-  if (return_pc!=noreg) {
-    ld(return_pc, _abi0(lr), Rscratch1); // LR
-  }
+void InterpreterMacroAssembler::load_fp_values(Register fp, Register sender_fp) {
+  ld(fp, _abi0(callers_sp), R1_SP);     // *SP
+  ld(sender_fp, _abi0(callers_sp), fp); // **SP
+}
 
-  // Merge top frames.
-  subf(Rscratch1, R1_SP, Rsender_sp); // top_frame_sp - SP
-  stdux(Rscratch2, R1_SP, Rscratch1); // atomically set *(SP = top_frame_sp) = **SP
+void InterpreterMacroAssembler::remove_top_frame(Register fp, Register sender_sp, Register sender_fp, Register return_pc, Register temp) {
+  assert_different_registers(sender_sp, sender_fp, return_pc, temp);
+  ld(sender_sp, _ijava_state_neg(sender_sp), fp);
+  if (return_pc != noreg) {
+    ld(return_pc, _abi0(lr), fp); // last usage of fp, register can be reused
+  }
+  subf(temp, R1_SP, sender_sp);   // sender_sp - SP
+  stdux(sender_fp, R1_SP, temp);  // atomically set *(SP = sender_sp) = sender_fp
+}
+
+void InterpreterMacroAssembler::merge_frames(Register sender_sp, Register return_pc,
+                                             Register temp1, Register temp2) {
+  Register fp = temp1, sender_fp = temp2;
+  load_fp_values(fp, sender_fp);
+  remove_top_frame(fp, sender_sp, sender_fp, return_pc, /* temp */ fp);
 }
 
 void InterpreterMacroAssembler::narrow(Register result) {
@@ -864,26 +871,17 @@ void InterpreterMacroAssembler::remove_activation(TosState state,
                                                   bool install_monitor_exception) {
   BLOCK_COMMENT("remove_activation {");
 
-  // The below poll is for the stack watermark barrier. It allows fixing up frames lazily,
-  // that would normally not be safe to use. Such bad returns into unsafe territory of
-  // the stack, will call InterpreterRuntime::at_unwind.
-  Label slow_path;
-  Label fast_path;
-  safepoint_poll(slow_path, R11_scratch1, true /* at_return */, false /* in_nmethod */);
-  b(fast_path);
-  bind(slow_path);
-  push(state);
-  set_last_Java_frame(R1_SP, noreg);
-  call_VM_leaf(CAST_FROM_FN_PTR(address, InterpreterRuntime::at_unwind), R16_thread);
-  reset_last_Java_frame();
-  pop(state);
-  align(32);
-  bind(fast_path);
-
   unlock_if_synchronized_method(state, throw_monitor_exception, install_monitor_exception);
 
   // Save result (push state before jvmti call and pop it afterwards) and notify jvmti.
   notify_method_exit(false, state, NotifyJVMTI, true);
+
+  // The below poll is for the stack watermark barrier. It allows fixing up frames lazily,
+  // that would normally not be safe to use. Such bad returns into unsafe territory of
+  // the stack, will call InterpreterRuntime::at_unwind.
+  Label slow_path, fast_path;
+  Register fp = R22_tmp2, sender_fp = R23_tmp3;
+  load_fp_values(fp, sender_fp);
 
   BLOCK_COMMENT("reserved_stack_check:");
   if (StackReservedPages > 0) {
@@ -901,8 +899,7 @@ void InterpreterMacroAssembler::remove_activation(TosState state,
     // call could have a smaller SP, so that this compare succeeds for an
     // inner call of the method annotated with ReservedStack.
     ld_ptr(R0, JavaThread::reserved_stack_activation_offset(), R16_thread);
-    ld_ptr(R11_scratch1, _abi0(callers_sp), R1_SP); // Load frame pointer.
-    cmpld(CR0, R11_scratch1, R0);
+    cmpld(CR0, fp, R0);
     blt_predict_taken(CR0, no_reserved_zone_enabling);
 
     // Enable reserved zone again, throw stack overflow exception.
@@ -916,9 +913,31 @@ void InterpreterMacroAssembler::remove_activation(TosState state,
 
   verify_oop(R17_tos, state);
 
-  merge_frames(/*top_frame_sp*/ R21_sender_SP, /*return_pc*/ R0, R11_scratch1, R12_scratch2);
+#if INCLUDE_JFR
+  std(sender_fp, in_bytes(JavaThread::last_sender_Java_fp_offset()), R16_thread);
+#endif
+  safepoint_poll(slow_path, R11_scratch1, true /* at_return */, false /* in_nmethod */);
+  b(fast_path);
+  bind(slow_path);
+  push(state);
+  set_last_Java_frame(R1_SP, noreg);
+#if INCLUDE_JFR
+  std(R14_bcp, _ijava_state_neg(bcp), fp); // need to save bcp but not restore it.
+#endif
+  call_VM_leaf(CAST_FROM_FN_PTR(address, InterpreterRuntime::at_unwind), R16_thread);
+  reset_last_Java_frame();
+  pop(state);
+  align(32);
+  bind(fast_path);
+
+  remove_top_frame(fp, R21_sender_SP, sender_fp, /*return_pc*/ R0, R11_scratch1);
   mtlr(R0);
   pop_cont_fastpath();
+
+#if INCLUDE_JFR
+  li(R0, 0);
+  std(R0, in_bytes(JavaThread::last_sender_Java_fp_offset()), R16_thread);
+#endif
   BLOCK_COMMENT("} remove_activation");
 }
 
