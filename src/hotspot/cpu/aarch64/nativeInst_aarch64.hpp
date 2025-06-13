@@ -83,7 +83,6 @@ public:
   bool is_safepoint_poll();
   bool is_movz();
   bool is_movk();
-  bool is_sigill_not_entrant();
   bool is_stop();
 
 protected:
