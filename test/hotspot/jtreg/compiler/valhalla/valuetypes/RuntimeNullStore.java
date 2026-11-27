@@ -42,7 +42,7 @@ import compiler.valhalla.valuetypes.ValueTypes;
  * @summary Test C1 runtime stores to nullable non-atomic flat fields
  * @requires vm.flagless
  * @requires vm.compiler1.enabled
- * @requires os.simpleArch == "aarch64" | os.simpleArch == "x64"
+ * @requires os.simpleArch == "aarch64" | os.simpleArch == "x64" | os.simpleArch == "ppc64" | os.simpleArch == "ppc64le"
  * @library /test/lib /
  * @modules java.base/jdk.internal.misc
  *          java.base/jdk.internal.vm.annotation

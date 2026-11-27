@@ -174,12 +174,28 @@ void LoadFlattenedArrayStub::emit_code(LIR_Assembler* ce) {
 // Implementation of StoreFlatNonatomicFieldStub
 
 StoreFlatNonAtomicFieldStub::StoreFlatNonAtomicFieldStub(LIR_Opr dest, LIR_Opr src, LIR_Opr field_entry, CodeEmitInfo* info) {
-  Unimplemented();
+  _dest = dest;
+  _src = src;
+  _resolved_field_entry = field_entry;
+  _info = new CodeEmitInfo(info);
 }
 
 void StoreFlatNonAtomicFieldStub::emit_code(LIR_Assembler* ce) {
-  Unimplemented();
+  __ bind(_entry);
+  // Pass arguments on stack.
+  __ std(_dest->as_register(), -24, R1_SP);
+  __ std(_src->as_register(), -16, R1_SP);
+  __ std(_resolved_field_entry->as_pointer_register(), -8, R1_SP);
+  address stub = Runtime1::entry_for(StubId::c1_store_flat_nonatomic_field_id);
+  //__ load_const_optimized(R0, stub);
+  __ add_const_optimized(R0, R29_TOC, MacroAssembler::offset_to_global_toc(stub));
+  __ mtctr(R0);
+  __ bctrl();
+  ce->add_call_info_here(_info);
+  ce->verify_oop_map(_info);
+  __ b(_continuation);
 }
+
 
 // Implementation of StoreFlattenedArrayStub
 

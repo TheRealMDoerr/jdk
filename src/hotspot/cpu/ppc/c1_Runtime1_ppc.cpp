@@ -512,6 +512,10 @@ OopMapSet* Runtime1::generate_code_for(StubId id, StubAssembler* sasm) {
       oop_maps = stub_call_with_stack_parms(sasm, R3_RET, CAST_FROM_FN_PTR(address, load_flat_array), 2);
       break;
 
+    case StubId::c1_store_flat_nonatomic_field_id:
+      oop_maps = stub_call_with_stack_parms(sasm, noreg, CAST_FROM_FN_PTR(address, store_flat_nonatomic_field), 3);
+      break;
+
     case StubId::c1_store_flat_array_id:
       oop_maps = stub_call_with_stack_parms(sasm, noreg, CAST_FROM_FN_PTR(address, store_flat_array), 3);
       break;

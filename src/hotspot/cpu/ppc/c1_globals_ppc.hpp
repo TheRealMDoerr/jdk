@@ -59,6 +59,6 @@ define_pd_global(bool,     UseTypeProfile,               false);
 define_pd_global(bool,     OptimizeSinglePrecision,      false);
 define_pd_global(bool,     CSEArrayLength,               true);
 
-define_pd_global(bool, C1UseNonAtomicFlatFieldStoreRuntime, false);
+define_pd_global(bool, C1UseNonAtomicFlatFieldStoreRuntime, true);
 
 #endif // CPU_PPC_C1_GLOBALS_PPC_HPP
